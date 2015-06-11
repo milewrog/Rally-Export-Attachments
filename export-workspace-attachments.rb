@@ -59,7 +59,7 @@ $my_username           = "user@company.com"
 $my_password           = "topsecret"
 $my_api_version        = "1.43"
 $my_workspace_oid      = "12345678910"
-$my_vars           = "./my_vars.rb"
+$my_vars               = "./my_vars.rb"
 
 
 if FileTest.exist?( $my_vars ); puts "Loading variables from #{$my_vars}..."; require $my_vars; end
@@ -218,7 +218,7 @@ def get_all_workspace_attachments (project)
 
         query.fetch =       "Artifact"
         query.fetch = query.fetch + ",Build"
-        query.fetch = query.fetch + ",Content"
+        # query.fetch = query.fetch + ",Content"
         query.fetch = query.fetch + ",ContentType"
         query.fetch = query.fetch + ",CreationDate"
         query.fetch = query.fetch + ",Date"
@@ -238,6 +238,14 @@ def get_all_workspace_attachments (project)
         all_workspace_attachments   = @rally.find(query)
 
     return (all_workspace_attachments)
+end
+
+def get_attachement_content(url)
+  query = RallyAPI::RallyQuery.new()
+  query.type = :attachment_content
+  # query.? = url
+  query.fetch = 'Content'
+  @rally.find(query)
 end
 
 def extract_id(url)
@@ -350,7 +358,7 @@ type_hash = Hash.new (0)
               artifact_creation_date = this_workspace_attachment.Artifact.CreationDate
               artifact_last_update_date = this_workspace_attachment.Artifact.LastUpdateDate
               # dir_name_artifact = dir_name_artifact + artifact_formatted_id
-              dir_name_artifact = dir_name_artifact + "/artifact_" + extract_id(this_workspace_attachment.Artifact.ref)
+              dir_name_artifact = dir_name_artifact + "/" + artifact_formatted_id
               create_export_dir(dir_name_artifact, DIR_CAN_BE_OLD)
           else
               artifact_formatted_id = "(n/a)"
@@ -368,7 +376,7 @@ type_hash = Hash.new (0)
               test_case_result_build = this_workspace_attachment.TestCaseResult.Build
               test_case_formatted_id = "#{this_workspace_attachment.TestCaseResult.TestCase.FormattedID}"
               # dir_name_artifact = dir_name_artifact + test_case_formatted_id
-              dir_name_artifact = dir_name_artifact + "/testCaseResult_" + extract_id(this_workspace_attachment.TestCaseResult.ref)
+              dir_name_artifact = dir_name_artifact + "/" + test_case_formatted_id
               create_export_dir(dir_name_artifact, DIR_CAN_BE_OLD)
 
               # ------------------------------------------------------
@@ -376,7 +384,7 @@ type_hash = Hash.new (0)
               if this_workspace_attachment.TestCaseResult.TestSet != nil
                   test_set_formatted_id = "#{this_workspace_attachment.TestCaseResult.TestSet.FormattedID}"
                   # dir_name_artifact = dir_name_artifact + "-" + test_set_formatted_id
-                  dir_name_artifact = dir_name_artifact + "/testSet_" + extract_id(this_workspace_attachment.TestCaseResult.TestSet.ref)
+                  dir_name_artifact = dir_name_artifact + "/" + test_set_formatted_id
                   create_export_dir(dir_name_artifact, DIR_CAN_BE_OLD)
               end
           else
@@ -429,24 +437,38 @@ type_hash = Hash.new (0)
           #
           file_name_data = dir_name_artifact + "/attachment-%03d.DATA"%[count_workspace_attachments+1]
 
-          if this_workspace_attachment.Content == nil
-              # Yes it is possible to have an attachment with no content
-              extension = ".empty"
-              file_data = File.new(file_name_data + extension,"wb")
-          else
-              extension = "." + this_workspace_attachment.Name.split(".")[-1]
-              file_data = File.new(file_name_data + extension,"wb")
-              this_content = this_workspace_attachment.Content.read 
-              file_data.syswrite(Base64.decode64(this_content.Content))
-          end
-          type_hash[extension.downcase] += 1
-          print         "           Wrote DATA filename=#{file_name_data}  Size=#{this_workspace_attachment.Size}\n"
+          # if this_workspace_attachment.Content == nil
+          #     # Yes it is possible to have an attachment with no content
+          #     extension = ".empty"
+          #     file_data = File.new(file_name_data + extension,"wb")
+          # else
+          #     extension = "." + this_workspace_attachment.Name.split(".")[-1]
+          #     file_data = File.new(file_name_data + extension,"wb")
+          #     this_content = this_workspace_attachment.Content.read 
+          #     file_data.syswrite(Base64.decode64(this_content.Content))
+          # end
+          # type_hash[extension.downcase] += 1
+          # print         "           Wrote DATA filename=#{file_name_data}  Size=#{this_workspace_attachment.Size}\n"
 
-          file_data.close
+          filename_content = file_name_data + "." + this_workspace_attachment.Name.split(".")[-1]
+          filename_nocontent = file_name_data + ".empty"
+          if !File.exist?(filename_content) && !File.exist?(filename_nocontent)
+            content = @rally.read(:attachment, extract_id(this_workspace_attachment.ref), workspace: this_workspace.ref).Content.read
+            if content.Content 
+              file_data = File.new(filename_content,"wb")
+              file_data.syswrite(Base64.decode64(content.Content))
+              file_data.close
+            else
+              file_data = File.new(filename_nocontent,"wb")
+              file_data.close
+            end
+          end
+
+          # file_data.close
 
       end #} of "all_workspace_attachments.each_with_index do |this_workspace_attachment,count_workspace_attachments|}
 
-    end
+    end # get_open_projects(this_workspace).each do |project|
 
 end #} of "all_workspaces.each_with_index do |this_workspace, count_workspace|"
 

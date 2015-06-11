@@ -252,6 +252,22 @@ def extract_id(url)
   url.match(/\/(\d+)$/)[1]
 end
 
+def save_workspace_info(workspace, directory_name)
+  File.open(directory_name + '/_workspace_info.txt', 'w') do |file|     # leading underscore so that it sorts to the top of a directory listing
+    file.write("name:    #{workspace.name}\n")
+    file.write("version: #{workspace._rallyAPIMajor}.#{workspace._rallyAPIMinor}\n")
+    file.write("url:     #{workspace.ref}\n") 
+  end
+end
+
+def save_project_info(project, directory_name)
+  File.open(directory_name + '/_project_info.txt', 'w') do |file|       # leading underscore so that it sorts to the top of a directory listing
+    file.write("name:    #{project.name}\n")
+    file.write("version: #{project._rallyAPIMajor}.#{project._rallyAPIMinor}\n")
+    file.write("url:     #{project.ref}\n") 
+  end
+end
+
 
 # ------------------------------------------------------------------------------
 # Main code starts here.
@@ -341,8 +357,10 @@ type_hash = Hash.new (0)
           # dir_name_workspace = root_dir + "/WS%03d/"%[ count_workspace + 1 ]
           dir_name_workspace = root_dir + "/workspace_#{extract_id(this_workspace.ref)}"
           create_export_dir(dir_name_workspace, DIR_NEW)
+          save_workspace_info(this_workspace, dir_name_workspace)
           dir_name_workspace = dir_name_workspace + "/project_#{extract_id(project.ref)}"
           create_export_dir(dir_name_workspace, DIR_NEW)
+          save_project_info(project, dir_name_workspace)
           if count_workspace_attachments == 0
               print "Create a workspace directory within the root_dir for saving attachments: #{dir_name_workspace}\n"
           end
@@ -452,17 +470,40 @@ type_hash = Hash.new (0)
 
           filename_content = file_name_data + "." + this_workspace_attachment.Name.split(".")[-1]
           filename_nocontent = file_name_data + ".empty"
-          if !File.exist?(filename_content) && !File.exist?(filename_nocontent)
+
+          # Drop a temporary flag file while we are retrieving the content.  If the 
+          # flag file already exists then delete existing content, because the download
+          # was interupted, and download it again.
+          filename_inprogress = file_name_data + ".inprogress"
+          if File.exist?(filename_inprogress)
+            File.delete(filename_content) if File.exist?(filename_content)
+            File.delete(filename_nocontent) if File.exist?(filename_nocontent)
+            File.delete(filename_inprogress)    # in case there are problems with the flag file itself
+            print  "           DATA filename=#{filename_content} previous download failed; re-downloading\n"
+          end
+          file_inprogress = File.new(filename_inprogress, "wb")
+          file_inprogress.syswrite(filename_content)
+          file_inprogress.close
+
+          if File.exist? filename_content
+              print  "           DATA filename=#{filename_content} downloaded previously; skipping\n"
+          elsif File.exist? filename_nocontent
+              print  "           DATA filename=#{filename_nocontent} downloaded previously; skipping\n"
+          else
             content = @rally.read(:attachment, extract_id(this_workspace_attachment.ref), workspace: this_workspace.ref).Content.read
             if content.Content 
               file_data = File.new(filename_content,"wb")
               file_data.syswrite(Base64.decode64(content.Content))
               file_data.close
+              print  "           Wrote DATA filename=#{filename_content}  Size=#{this_workspace_attachment.Size}\n"
             else
               file_data = File.new(filename_nocontent,"wb")
               file_data.close
+              print  "           Wrote DATA filename=#{filename_nocontent}\n"
             end
           end
+
+          File.delete(filename_inprogress)
 
           # file_data.close
 
